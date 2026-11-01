@@ -1,0 +1,14 @@
+# Ignore all DB files
+*.db
+
+#ignore some py files 
+testing.py
+
+#ignore .json files
+*.json
+
+#ignore .env file Important contains sensitive information
+.env
+
+#with the exception of the example env used as a guide for others 
+!.env.example
