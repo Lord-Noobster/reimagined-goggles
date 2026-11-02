@@ -45,22 +45,61 @@ def init_db(path="incidents.db"):
     """)
     conn.commit()
 
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS alert_entities (
+            alertId TEXT,
+            entityType TEXT,
+            value TEXT,
+            timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (alertId, entityType, value),
+            FOREIGN KEY (alertId) REFERENCES alerts(alertId)
+        )
+    """)
+    conn.commit()
+
     return conn
 
 
-def insert_into_db(conn, rows_incidents, rows_alerts):
+def insert_into_db(conn, the_dict):
+    TABLES = {
+        "incidents": ["incidentId", "incidentName", "severity", "status"],
+        "alerts": [
+            "alertId",
+            "incidentId",
+            "category",
+            "machineId",
+            "firstSeen",
+            "detectionSource",
+        ],
+        "alert_entities": ["alertId", "entityType", "value"],
+    }
     cur = conn.cursor()
-    cur.executemany(
-        "INSERT OR IGNORE INTO incidents (incidentId, incidentName, severity, status ) "
-        "VALUES (:IncidentId, :IncidentName, :Severity, :Status)",
-        (rows_incidents),
-    )
-    conn.commit()
-    cur.executemany(
-        "INSERT OR IGNORE INTO alerts (alertId, incidentId, category, machineId, firstSeen, detectionSource) "
-        "VALUES (:alertId, :incidentId, :category, :machineId, :firstSeen, :detectionSource)",
-        (rows_alerts),
-    )
+
+    with conn:
+        for name in TABLES:
+            cols = ", ".join(TABLES[name])
+            placeholder = ", ".join(f":{item}" for item in TABLES[name])
+
+            sql = f"INSERT OR IGNORE INTO {name} ({cols}) VALUES ({placeholder})"
+            conn.executemany(sql, the_dict[name])
+    # cur.executemany(
+    #   "INSERT OR IGNORE INTO incidents (incidentId, incidentName, severity, status ) "
+    #  "VALUES (:IncidentId, :IncidentName, :Severity, :Status)",
+    # (the_dict["incidents"]),
+    # )
+    # conn.commit()
+    # cur.executemany(
+    #   "INSERT OR IGNORE INTO alerts (alertId, incidentId, category, machineId, firstSeen, detectionSource) "
+    #  "VALUES (:alertId, :incidentId, :category, :machineId, :firstSeen, :detectionSource)",
+    # (the_dict["alerts"]),
+    # )
+    # conn.commit()
+
+    # cur.executemany(
+    #   "INSERT OR IGNORE INTO alert_entities (alertId, entityType, value) "
+    #  "VALUES (:alertId, :entityType, :value)",
+    # (the_dict["alert_entities"]),
+    # )
     conn.commit()
 
 
@@ -85,13 +124,14 @@ def get_incidents(token):
     while url:
         throttle()
         r = requests.get(url, headers=header)
-        print(r.text)
-        print(r.headers)
+        # print(r.text)
+        # print(r.headers)
         r.raise_for_status()
         page = r.json()
 
         results.extend(page["value"])
-
+        print("Ok")
+        print(len(results))
         next_link = page.get("@odata.nextLink")
         url = urljoin(API_BASE, next_link) if next_link else None
     # print(len(results))
@@ -99,21 +139,20 @@ def get_incidents(token):
 
 
 def data_manipulation(results):
-    rows_incidents = []
-
-    rows_alerts = []
+    ENTITY_TYPES = ["domains", "emails", "fileHashes", "ips", "processes", "urls"]
+    the_dict = {"incidents": [], "alerts": [], "alert_entities": []}
 
     for incident in results:
-        rows_incidents.append(
+        the_dict["incidents"].append(
             {
-                "IncidentId": incident["incidentId"],
-                "IncidentName": incident["incidentName"],
-                "Severity": incident["severity"],
-                "Status": incident["status"],
+                "incidentId": incident["incidentId"],
+                "incidentName": incident["incidentName"],
+                "severity": incident["severity"],
+                "status": incident["status"],
             }
         )
         for alert in incident["alerts"]:
-            rows_alerts.append(
+            the_dict["alerts"].append(
                 {
                     "alertId": alert["alertId"],
                     "incidentId": incident["incidentId"],
@@ -123,7 +162,17 @@ def data_manipulation(results):
                     "detectionSource": alert["detectionSource"],
                 }
             )
-    return rows_incidents, rows_alerts
+
+            for entity_type in ENTITY_TYPES:
+                for value in alert["entities"].get(entity_type, []):
+                    the_dict["alert_entities"].append(
+                        {
+                            "alertId": alert["alertId"],
+                            "entityType": entity_type,
+                            "value": value,
+                        }
+                    )
+    return the_dict
 
 
 def program():
@@ -133,9 +182,9 @@ def program():
 
     results = get_incidents(token)
 
-    rows_incidents, rows_alerts = data_manipulation(results)
+    the_dict = data_manipulation(results)
 
-    insert_into_db(conn, rows_incidents, rows_alerts)
+    insert_into_db(conn, the_dict)
 
 
 program()
