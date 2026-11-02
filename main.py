@@ -94,7 +94,7 @@ def get_incidents(token):
 
         next_link = page.get("@odata.nextLink")
         url = urljoin(API_BASE, next_link) if next_link else None
-    print(len(results))
+    # print(len(results))
     return results
 
 
