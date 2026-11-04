@@ -3,10 +3,12 @@ import requests
 from urllib.parse import urljoin
 import time
 import os
-from dotenv import load_dotenv
+from pathlib import Path
+from dotenv import load_dotenv, set_key, get_key
+
 
 load_dotenv()  # this loads the .env file with our sensitive constants
-
+ENV_PATH = ".env"
 API_BASE = os.getenv("API_BASE")
 
 EMAIL = os.getenv("EMAIL")
@@ -14,6 +16,10 @@ EMAIL = os.getenv("EMAIL")
 _last_call = 0.0  # since last call
 
 MIN_INTERVAL = 1.5  # minimum time in seconds between each call
+
+TOKEN_EXPIRATION = (
+    169200  # 47 hours a buffer of one hour to avoid token expiring during a call
+)
 
 
 def init_db(path="incidents.db"):
@@ -113,21 +119,64 @@ def throttle():
     _last_call = time.monotonic()
 
 
+def verify_token():
+    env_path = Path(".env")
+    token = get_key(dotenv_path=env_path, key_to_get="TOKEN")
+    token_timestamp_str = get_key(dotenv_path=env_path, key_to_get="TOKEN_TIMESTAMP")
+
+    if token:
+        # token_timestamp = int(token_timestamp_str)
+        try:
+            token_timestamp = int(token_timestamp_str)
+        except (TypeError, ValueError) as e:
+            print(f"corrupted or no timestamp found in .env {e} fetching new token")
+            token = update_token(env_path)
+            return token
+        current_time = int(time.time())
+        token_age = current_time - token_timestamp
+        if (
+            0 <= token_age <= TOKEN_EXPIRATION
+        ):  # should also catch edge case of the timestamp being in the future
+            return token
+        else:
+            new_token = update_token(env_path)
+            return new_token
+    else:
+        token = update_token(env_path)
+        return token
+
+
+def update_token(env_path):
+    new_token = get_token()
+    new_token_timestamp = int(time.time())
+    check_token = set_key(
+        dotenv_path=env_path, key_to_set="TOKEN", value_to_set=f"{new_token}"
+    )
+    check_timestamp = set_key(
+        dotenv_path=env_path,
+        key_to_set="TOKEN_TIMESTAMP",
+        value_to_set=f"{new_token_timestamp}",
+    )
+    print(check_token, check_timestamp)
+    return new_token
+
+
 def get_token():
     try:
+        throttle()
         r = requests.post(
             f"{API_BASE}/api/auth/token", json={"email": EMAIL}, timeout=0.5
         )
         r.raise_for_status()
         return r.json()["token"]
     except requests.exceptions.Timeout:
-        print(f"timeout")
+        print("timeout")
     except requests.exceptions.TooManyRedirects:
-        print(f"too many redirects")
+        print("too many redirects")
     except requests.exceptions.RequestException as e:
-        print(f"error {e}")
+        print("error {e}")
     except Exception as e:
-        print(f"{e}")
+        print("{e}")
     except requests.HTTPError as e:
         raise SystemExit(e)
 
@@ -207,7 +256,9 @@ def data_manipulation(results):
 def program():
     conn = init_db()
 
-    token = get_token()
+    token = verify_token()
+
+    # token = get_token()
 
     results = get_incidents(token)
 
