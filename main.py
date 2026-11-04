@@ -101,6 +101,9 @@ def insert_into_db(conn, the_dict):
     except sqlite3.IntegrityError as e:
         print(f"Integrity error {e}")
         conn.close()
+    except sqlite3.DatabaseError:
+        print("Database error")
+        conn.close()
     except sqlite3.ProgrammingError as e:
         print(f"programming error {e}")
         conn.close()
@@ -150,7 +153,10 @@ def update_token(env_path):
 
 
 def get_token():
-    print("get_token runs")
+
+    print(
+        "get_token runs"
+    )  # just a tester to see when get_token runs in relation to verify and update_token
     try:
         throttle()
         r = requests.post(
@@ -177,15 +183,16 @@ def get_incidents(token):
     try:
         while url:
             throttle()
+
             r = requests.get(url, headers=header, timeout=0.5)
-            # print(r.text)
-            # print(r.headers)
             r.raise_for_status()
             page = r.json()
 
             results.extend(page["value"])
+
             print("Ok")
             print(len(results))
+
             next_link = page.get("@odata.nextLink")
             url = urljoin(API_BASE, next_link) if next_link else None
     except requests.exceptions.Timeout:
@@ -238,6 +245,8 @@ def data_manipulation(results):
                             }
                         )
         return the_dict
+    except (TypeError, ValueError) as e:
+        print("{e} error ")
     except Exception as e:
         print(f"{e}")
 
