@@ -124,26 +124,14 @@ def verify_token():
     token = get_key(dotenv_path=env_path, key_to_get="TOKEN")
     token_timestamp_str = get_key(dotenv_path=env_path, key_to_get="TOKEN_TIMESTAMP")
 
-    if token:
-        # token_timestamp = int(token_timestamp_str)
-        try:
-            token_timestamp = int(token_timestamp_str)
-        except (TypeError, ValueError) as e:
-            print(f"corrupted or no timestamp found in .env {e} fetching new token")
-            token = update_token(env_path)
-            return token
-        current_time = int(time.time())
-        token_age = current_time - token_timestamp
-        if (
-            0 <= token_age <= TOKEN_EXPIRATION
-        ):  # should also catch edge case of the timestamp being in the future
-            return token
-        else:
-            new_token = update_token(env_path)
-            return new_token
-    else:
-        token = update_token(env_path)
+    try:
+        timestamp_age = int(time.time() - int(token_timestamp_str))
+    except (TypeError, ValueError):
+        timestamp_age = None
+
+    if token and timestamp_age is not None and 0 <= timestamp_age <= TOKEN_EXPIRATION:
         return token
+    return update_token(env_path)
 
 
 def update_token(env_path):
@@ -162,6 +150,7 @@ def update_token(env_path):
 
 
 def get_token():
+    print("get_token runs")
     try:
         throttle()
         r = requests.post(
