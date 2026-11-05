@@ -3,7 +3,7 @@
 
 #ignore some py files 
 testing.py
-test.py
+
 #ignore .json files
 *.json
 
